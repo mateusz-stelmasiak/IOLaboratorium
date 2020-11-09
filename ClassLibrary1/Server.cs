@@ -12,6 +12,7 @@ namespace ServerLibrary
 
         /// <summary>
         /// Structure for holding information about individual server client sessions.
+        /// That is- the TCP Stream of the client and his unique ID.
         /// </summary>
         public struct Client
         {
@@ -34,7 +35,7 @@ namespace ServerLibrary
         bool running;
         List<byte []> buffers = new List<byte[]>();
         int clientCounter = 0;
-
+        Communicator communicator;
         TcpListener tcpListener;
 
         public delegate void TransmissionDataDelegate(Client client);
@@ -77,7 +78,7 @@ namespace ServerLibrary
 
         }
         protected TcpListener TcpListener { get => tcpListener; set => tcpListener = value;}
-    
+        public List<byte[]> Buffers   { get => buffers; set => buffers = value; }
         #endregion
 
         #region Constructors
@@ -90,6 +91,7 @@ namespace ServerLibrary
             running = false;
             IPAddress = IP;
             Port = port;
+            communicator = new Communicator(this);
             if (!checkPort())
             {
                 Port = 8000;
@@ -143,179 +145,15 @@ namespace ServerLibrary
         /// <param name="client"></param>
         protected void BeginDataTransmission(Client client)
         {
-            String bufferString="";
-            int messageLenght = 0;
-           
-
-            //greet the user, giving him an option to either sign up or log in
-            byte [] message= Encoding.ASCII.GetBytes("\nWelcome to the server! Log in or Sign up (s-sign up/anything else-log in)");
-            client.Stream.Write(message, 0, message.Length);
-
-            //wait for the response    
-            messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-            bufferString = Encoding.UTF8.GetString(buffers[client.Id], 0, messageLenght);
-
-            if(bufferString == "s"){ SignUp(client);}
+            String bufferString = communicator.greetAndChooseOption(client);
+   
+            if(bufferString == "s"){ communicator.SignUp(client);}
             //after user signed up, make him log in
-            LogIn(client);
+            communicator.LogIn(client);
             //after sucesfull loging in, echo the client
-            Echo(client);
+            communicator.Echo(client);
         }
 
-        /// <summary>
-        /// Puts given Client in echo state, whatever he writes is repeated back to him.
-        /// If the client doesn't respond for 10 seconds, he timesout.
-        /// </summary>
-        /// <param Client structure="client"></param>
-        private void Echo(Client client)
-        {
-
-            client.Stream.ReadTimeout = 10000;
-            byte[] message = Encoding.ASCII.GetBytes("\n\rWelcome to the echo zone! (You have 10 seconds to shout something)");
-            client.Stream.Write(message, 0, message.Length);
-            while (true)
-            {
-                try
-                {
-                    int messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-                    client.Stream.Write(buffers[client.Id], 0, messageLenght);
-                }
-                catch(System.IO.IOException e) { Console.Write("\n Client" +client.Id+ "has disconected!"); break; }
-            }
-           
-        }
-
-        /// <summary>
-        /// Allows user to log into an existing account.
-        /// </summary>
-        /// <param  Client structure="client"></param>
-        private void LogIn(Client client)
-        {
-            Authentication auth = new Authentication();
-            int messageLenght = 0;
-            byte[] message;
-            String username = "\r\n";
-            String password = "\r\n";
-
-
-            message = Encoding.ASCII.GetBytes("\rUsername: ");
-            client.Stream.Write(message, 0, message.Length);
-            //in order to avoid \r\n randomly sent by Putty being taken as an input
-            while (username == "\r\n")
-            {
-                messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-                username = Encoding.UTF8.GetString(buffers[client.Id], 0, messageLenght);
-            }
-
-            message = Encoding.ASCII.GetBytes("\rPassword: ");
-            client.Stream.Write(message, 0, message.Length);
-            //in order to avoid \r\n randomly sent by Putty being taken as an input
-            while (password == "\r\n")
-            {
-                messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-                password = Encoding.UTF8.GetString(buffers[client.Id], 0, messageLenght); ;
-            }
-
-            try
-            {
-                auth.AuthorizeUser(username, password);
-                Console.WriteLine("\nA user loged in [username:" + username + "]");
-                message = Encoding.ASCII.GetBytes("\n\rLog in succesfull!");
-                client.Stream.Write(message, 0, message.Length);
-            }
-            catch (AuthenticationException e)
-            {
-                if (e.ErrorCategory == -1)
-                {
-                    message = Encoding.ASCII.GetBytes("Server malfunction: " + e);
-                    client.Stream.Write(message, 0, message.Length);
-                    return;
-                }
-                if (e.ErrorCategory == 1)
-                {
-                    message = Encoding.ASCII.GetBytes("Error: " + e);
-                    client.Stream.Write(message, 0, message.Length);
-                    message = Encoding.ASCII.GetBytes("\n\r--Try again!--\n\r");
-                    client.Stream.Write(message, 0, message.Length);
-                    LogIn(client);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Allows user to create a new account.
-        /// </summary>
-        /// <param  Client structure="client"></param>
-        private void SignUp(Client client)
-        {
-            Authentication auth = new Authentication();
-            int messageLenght = 0;
-            String password = "\r\n";
-            String confpassword = "\r\n";
-            String username = "\r\n";
-
-            byte[] message = Encoding.ASCII.GetBytes("\rUsername (max 10 chars): ");
-            client.Stream.Write(message, 0, message.Length);
-            //in order to avoid \r\n randomly sent by Putty being taken as an input
-            while (username == "\r\n")
-            {
-                messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-                username = Encoding.UTF8.GetString(buffers[client.Id], 0, messageLenght);
-            }
-
-                
-            message = Encoding.ASCII.GetBytes("\rPassword (one upercase Letter and number required): ");
-            client.Stream.Write(message, 0, message.Length);
-            //in order to avoid \r\n randomly sent by Putty being taken as an input
-            while (password == "\r\n")
-            {
-                messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-                password = Encoding.UTF8.GetString(buffers[client.Id], 0, messageLenght); ;
-            }
-
-            message = Encoding.ASCII.GetBytes("\rConfirm Password: ");
-            client.Stream.Write(message, 0, message.Length);
-            //in order to avoid \r\n randomly sent by Putty being taken as an input
-            while (confpassword == "\r\n")
-            {
-                messageLenght = client.Stream.Read(buffers[client.Id], 0, buffer_size);
-                confpassword = Encoding.UTF8.GetString(buffers[client.Id], 0, messageLenght); ;
-            }
-
-            //Check if the two passwords are the same
-            if (password != confpassword)
-            {
-                message = Encoding.ASCII.GetBytes("\r\nError: Passwords don't match!");
-                client.Stream.Write(message, 0, message.Length);
-                SignUp(client);
-            }
-
-
-            try
-            {
-                auth.CreateUser(username, password);
-                Console.WriteLine("\nNew account created [user:" + username + " password: " + password+"]");
-                message = Encoding.ASCII.GetBytes("\n\rAccount created succesfully!");
-                client.Stream.Write(message, 0, message.Length);
-            }
-            catch (AuthenticationException e)
-            {
-                if(e.ErrorCategory == -1)
-                {
-                    message = Encoding.ASCII.GetBytes("Server malfunction: " + e);
-                    client.Stream.Write(message, 0, message.Length);
-                    return;
-                }
-                if (e.ErrorCategory==1)
-                {
-                    message = Encoding.ASCII.GetBytes("Error: "+e);
-                    client.Stream.Write(message, 0, message.Length);
-                    message = Encoding.ASCII.GetBytes("\n\r--Try again!--\n\r");
-                    client.Stream.Write(message, 0, message.Length);
-                    SignUp(client);
-                }
-            }
-        }
 
         /// <summary>
         /// Starts the operations of the server.

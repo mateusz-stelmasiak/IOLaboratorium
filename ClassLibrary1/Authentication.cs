@@ -21,8 +21,6 @@ namespace ServerLibrary
             database = new DatabaseConector();
         }
 
-
-
         /// <summary>
         /// Allows creation of new users.
         /// </summary>
